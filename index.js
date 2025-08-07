@@ -2,7 +2,9 @@
 
 // --- Dependencies ---
 const express = require('express');
-const { exec } = require('child_process'); // Use Node's built-in exec function
+const { exec } = require('child_process');
+const fs = require('fs'); // Added for file operations
+const path = require('path'); // Added for handling file paths
 
 // --- App Initialization ---
 const app = express();
@@ -14,7 +16,7 @@ app.use(express.json());
 // --- Printer Endpoint ---
 /**
  * @route   POST /print-label
- * @desc    Receives data and sends it to the default local printer via command line.
+ * @desc    Receives data and sends it to a specific Windows printer.
  */
 app.post('/print-label', (req, res) => {
     console.log('Received print request:', req.body);
@@ -27,15 +29,8 @@ app.post('/print-label', (req, res) => {
     }
 
     // --- PRINTER CONFIGURATION ---
-    // I have selected a printer from the list you provided.
-    // If this is not the correct label printer, please replace it with one of the other names from your list.
-    const PRINTER_NAME = 'Brother_HL_L2395DW_series__3c2af4691380_';
-
-    if (PRINTER_NAME === 'YOUR_PRINTER_NAME_HERE') {
-        const errorMessage = "Printer name is not configured in printer-app.js";
-        console.error(errorMessage);
-        return res.status(500).send({ error: errorMessage });
-    }
+    // The printer name for your Windows machine.
+    const PRINTER_NAME = 'D450 Printer'; // <-- UPDATED PRINTER NAME
 
     // --- Format the Label Content ---
     const submittedAt = new Date().toLocaleString();
@@ -101,23 +96,39 @@ ${otherPartsContent.trim()}
         }
     }
 
-    // --- Send Each Label to the Printer via Command Line ---
+    // --- Send Each Label to the Printer (Windows Method) ---
     labelsToPrint.forEach((label, index) => {
-        // Escape quotes in the label content to be safe
-        const sanitizedLabel = label.replace(/"/g, '\\"');
-        const command = `echo "${sanitizedLabel}" | lp -d "${PRINTER_NAME}"`;
+        // For Windows, we must write the content to a temporary file first.
+        const tempFilePath = path.join(__dirname, `print_job_${Date.now()}_${index}.txt`);
 
-        console.log(`Executing print command for label ${index + 1}: ${command}`);
-
-        exec(command, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Error printing label ${index + 1}: ${error.message}`);
+        fs.writeFile(tempFilePath, label, (writeErr) => {
+            if (writeErr) {
+                console.error(`Error writing temp file for label ${index + 1}:`, writeErr);
                 return;
             }
-            if (stderr) {
-                console.warn(`Printer status message for label ${index + 1}: ${stderr}`);
-            }
-            console.log(`Label ${index + 1} sent to printer.`);
+
+            // Use the Windows 'print' command. Note the /d: switch.
+            const command = `print /d:"${PRINTER_NAME}" "${tempFilePath}"`;
+            console.log(`Executing print command for label ${index + 1}: ${command}`);
+
+            exec(command, (error, stdout, stderr) => {
+                // Always try to delete the temp file, regardless of print success.
+                fs.unlink(tempFilePath, (unlinkErr) => {
+                    if (unlinkErr) {
+                        console.error(`Error deleting temp file ${tempFilePath}:`, unlinkErr);
+                    }
+                });
+
+                if (error) {
+                    console.error(`Error printing label ${index + 1}: ${error.message}`);
+                    return;
+                }
+                if (stderr) {
+                    // stderr on the 'print' command can sometimes contain success messages.
+                    console.log(`Printer message for label ${index + 1}: ${stderr}`);
+                }
+                console.log(`Label ${index + 1} sent to printer.`);
+            });
         });
     });
 
@@ -129,5 +140,11 @@ app.listen(PORT, () => {
     console.log(`Local printer app listening on http://localhost:${PORT}`);
 });
 
-//note
-//lpstat -p // to find default printer
+/*
+// Note for Windows:
+// To find printer names, open Command Prompt and run:
+wmic printer get name
+
+// Or in PowerShell, run:
+Get-Printer
+*/
