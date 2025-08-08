@@ -91,37 +91,36 @@ ${otherPartsContent.trim()}
         }
     }
 
-    // --- Send Each Label to the Printer (Windows Method) ---
-    // --- Send Each Label to the Printer (Windows Method) ---
-    labelsToPrint.forEach((label, index) => {
-    // Create a unique temporary filename with a .txt extension
-    const tempFilePath = path.join(__dirname, `print_job_${Date.now()}_${index}.txt`);
+   // --- Send Each Label to the Printer (DEBUGGING VERSION) ---
+labelsToPrint.forEach((label, index) => {
+    console.log(`\n--- DEBUGGING LABEL ${index + 1} ---`);
 
-    // Write the label content to the temporary file
+    const tempFilePath = path.join(__dirname, `print_job_${Date.now()}_${index}.txt`);
+    console.log(`[DEBUG] Printer Name: "${PRINTER_NAME}"`);
+    console.log(`[DEBUG] Temp File Path: "${tempFilePath}"`);
+
     fs.writeFile(tempFilePath, label, (writeErr) => {
         if (writeErr) {
-            console.error(`Error writing temp file for label ${index + 1}:`, writeErr);
+            console.error('[FATAL] Error writing temp file:', writeErr);
             return;
         }
+        console.log('[DEBUG] Successfully wrote temp file.');
 
-        // Use the correct Windows 'print' command with the /d: switch
         const command = `print /d:"${PRINTER_NAME}" "${tempFilePath}"`;
-        console.log(`Executing Windows print command: ${command}`);
+        console.log(`[DEBUG] Executing command: ${command}`);
 
         exec(command, (error, stdout, stderr) => {
-            // Always try to delete the temp file afterwards
-            fs.unlink(tempFilePath, (unlinkErr) => {
-                if (unlinkErr) console.error(`Error deleting temp file:`, unlinkErr);
-            });
-
+            console.log('\n--- EXECUTION RESULT ---');
             if (error) {
-                console.error(`Error printing label ${index + 1}: ${error.message}`);
-                return;
+                console.error('[RESULT] EXEC ERROR:', error);
+            } else {
+                console.log('[RESULT] Exec completed with no error object.');
             }
-            if (stderr) {
-                console.log(`Printer message for label ${index + 1}: ${stderr}`);
-            }
-            console.log(`Label ${index + 1} sent to Windows printer queue.`);
+            console.log('[RESULT] STDOUT (Standard Output):', stdout);
+            console.log('[RESULT] STDERR (Standard Error):', stderr);
+            console.log('--- END OF DEBUGGING BLOCK ---\n');
+
+            // NOTE: We are intentionally NOT deleting the file for debugging.
         });
     });
 });
