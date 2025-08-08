@@ -2,7 +2,11 @@
 
 // --- Dependencies ---
 const express = require('express');
-const printer = require('printer'); // Use the native printer package
+const fs = require('fs');
+const path =require('path');
+const os = require('os');
+const PDFDocument = require('pdfkit');          // To create PDF documents
+const { print } = require('pdf-to-printer');    // To print PDF documents
 
 // --- App Initialization ---
 const app = express();
@@ -28,13 +32,6 @@ app.post('/print-label', (req, res) => {
     // --- Label formatting logic (remains the same) ---
     if (data.dropOffType === 'vehicle') {
         const labelContent = `
-
-
-
-
-
-
-
 ------------------------------
 SafetyFix -${data.shopName}
 ------------------------------
@@ -51,13 +48,6 @@ Notes: ${data.additionalNotes || 'None'}
         if (totalModules > 0) {
             for (let i = 1; i <= totalModules; i++) {
                 labelsToPrint.push(`
-
-
-
-
-
-
-
 ------------------------------
 SafetyFix -${data.shopName}
 ------------------------------
@@ -80,13 +70,6 @@ Module: ${i} of ${totalModules}
         if (buckles > 0) otherPartsContent += `Buckles: ${buckles}\n`;
         if (otherPartsContent) {
             labelsToPrint.push(`
-
-
-
-
-
-
-            
 ------------------------------
 SafetyFix - ${data.shopName}
 ------------------------------
@@ -99,27 +82,43 @@ ${otherPartsContent.trim()}
         }
     }
 
-    // --- Send Each Label to the Printer (Native Method) ---
-    try {
-        labelsToPrint.forEach((label, index) => {
-            console.log(`Sending label ${index + 1} to printer via native module...`);
-            printer.printDirect({
-                data: label, // The raw text to print
-                printer: PRINTER_NAME,
-                type: 'RAW', // Specifies we are sending raw text
-                success: function(jobID) {
-                    console.log(`Sent to printer with job ID: ${jobID}`);
-                },
-                error: function(err) {
-                    console.error('Error from native printer module:', err);
-                }
-            });
+    // --- Generate a PDF and Print It ---
+    labelsToPrint.forEach((label, index) => {
+        const doc = new PDFDocument({
+            size: 'A7', // A small standard size, good for labels
+            margin: 20
         });
-        res.status(200).send({ message: `${labelsToPrint.length} label(s) sent to printer.` });
-    } catch (err) {
-        console.error("A critical error occurred with the printer module:", err);
-        res.status(500).send({ error: "Failed to print." });
-    }
+
+        const tempFilePath = path.join(os.tmpdir(), `label-${Date.now()}-${index}.pdf`);
+        const stream = fs.createWriteStream(tempFilePath);
+        doc.pipe(stream);
+
+        // Add the label text to the PDF
+        doc.font('Courier').fontSize(9).text(label);
+
+        // Finalize the PDF
+        doc.end();
+
+        // Wait for the file to be fully written before printing
+        stream.on('finish', () => {
+            console.log(`PDF created at ${tempFilePath}. Sending to printer.`);
+            const options = { printer: PRINTER_NAME };
+
+            print(tempFilePath, options)
+                .then(jobId => {
+                    console.log(`Job sent to printer with ID: ${jobId}`);
+                    // Clean up the temporary PDF file
+                    fs.unlink(tempFilePath, () => {});
+                })
+                .catch(err => {
+                    console.error("Error from pdf-to-printer:", err);
+                    // Clean up the temporary PDF file
+                    fs.unlink(tempFilePath, () => {});
+                });
+        });
+    });
+
+    res.status(200).send({ message: `${labelsToPrint.length} label(s) being processed for printing.` });
 });
 
 // --- Server Start ---
