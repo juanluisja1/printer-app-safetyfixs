@@ -15,7 +15,7 @@ const PORT = 4000;
 // --- Middleware ---
 app.use(express.json());
 
-// --- Printer Endpoint ---
+// --- Printer Endpoint (UPDATED FOR BOLD TEXT) ---
 app.post('/print-label', (req, res) => {
     console.log('Received print request:', req.body);
     const data = req.body;
@@ -27,79 +27,66 @@ app.post('/print-label', (req, res) => {
 
     const PRINTER_NAME = 'D450 Printer';
     const submittedAt = new Date().toLocaleString();
-    let labelsToPrint = [];
+    let jobsToProcess = [];
 
-    // --- Label formatting logic (remains the same) ---
+    // --- Prepare data for each label ---
     if (data.dropOffType === 'vehicle') {
-        const labelContent = `
-------------------------------
-SafetyFix -${data.shopName}
-------------------------------
-Date: ${submittedAt}
-Phone: ${data.phoneNumber || 'N/A'}
-
-Vehicle: ${data.vehicleYear || ''} ${data.vehicleMake || ''} ${data.vehicleModel || ''}
-Notes: ${data.additionalNotes || 'None'}
-------------------------------
-        `;
-        labelsToPrint.push(labelContent);
+        jobsToProcess.push({ type: 'vehicle', data });
     } else if (data.dropOffType === 'part') {
         const totalModules = parseInt(data.moduleCount, 10) || 0;
         if (totalModules > 0) {
             for (let i = 1; i <= totalModules; i++) {
-                labelsToPrint.push(`
-------------------------------
-SafetyFix -${data.shopName}
-------------------------------
-Date: ${submittedAt}
-Phone: ${data.phoneNumber || 'N/A'}
-
-Module: ${i} of ${totalModules}
-------------------------------
-                `);
+                jobsToProcess.push({ type: 'module', data, current: i, total: totalModules });
             }
         }
-        let otherPartsContent = '';
-        const singleStage = parseInt(data.singleStageCount, 10) || 0;
-        const dualStage = parseInt(data.dualStageCount, 10) || 0;
-        const threeStage = parseInt(data.threeStageCount, 10) || 0;
-        const buckles = parseInt(data.buckleCount, 10) || 0;
-        if (singleStage > 0) otherPartsContent += `Single Stage: ${singleStage}\n`;
-        if (dualStage > 0) otherPartsContent += `Dual Stage: ${dualStage}\n`;
-        if (threeStage > 0) otherPartsContent += `Triple Stage: ${threeStage}\n`;
-        if (buckles > 0) otherPartsContent += `Buckles: ${buckles}\n`;
-        if (otherPartsContent) {
-            labelsToPrint.push(`
-------------------------------
-SafetyFix - ${data.shopName}
-------------------------------
-Date: ${submittedAt}
-Phone: ${data.phoneNumber || 'N/A'}
-
-${otherPartsContent.trim()}
-------------------------------
-            `);
+        
+        const hasOtherParts = (data.singleStageCount > 0 || data.dualStageCount > 0 || data.threeStageCount > 0 || data.buckleCount > 0);
+        if (hasOtherParts) {
+            jobsToProcess.push({ type: 'other_parts', data });
         }
     }
 
-    // --- Generate a PDF and Print It ---
-    labelsToPrint.forEach((label, index) => {
+    // --- Generate a PDF for each job and print it ---
+    jobsToProcess.forEach((job, index) => {
         const doc = new PDFDocument({
-            size: 'A7', // A small standard size, good for labels
-            margin: 20
+            size: [360, 360], // 5 inches x 5 inches
+            margin: 36
         });
 
         const tempFilePath = path.join(os.tmpdir(), `label-${Date.now()}-${index}.pdf`);
         const stream = fs.createWriteStream(tempFilePath);
         doc.pipe(stream);
 
-        // Add the label text to the PDF
-        doc.font('Courier').fontSize(9).text(label);
+        // --- Build the PDF with bolding ---
+        doc.font('Helvetica-Bold').fontSize(12).text(`SafetyFix - ${job.data.shopName}`, { align: 'center' });
+        doc.moveDown(2);
 
-        // Finalize the PDF
+        doc.fontSize(10);
+        doc.font('Helvetica-Bold').text('Date: ', { continued: true }).font('Helvetica').text(submittedAt);
+        doc.font('Helvetica-Bold').text('Phone: ', { continued: true }).font('Helvetica').text(job.data.phoneNumber || 'N/A');
+        doc.moveDown();
+
+        if (job.type === 'vehicle') {
+            doc.font('Helvetica-Bold').text('Vehicle: ', { continued: true })
+               .font('Helvetica').text(`${job.data.vehicleYear || ''} ${job.data.vehicleMake || ''} ${job.data.vehicleModel || ''}`);
+            doc.font('Helvetica-Bold').text('Notes: ', { continued: true })
+               .font('Helvetica').text(job.data.additionalNotes || 'None');
+        } else if (job.type === 'module') {
+            doc.font('Helvetica-Bold').text('Module: ', { continued: true })
+               .font('Helvetica').text(`${job.current} of ${job.total}`);
+        } else if (job.type === 'other_parts') {
+            doc.font('Helvetica-Bold').text('Parts Drop-off:', { underline: true });
+            doc.moveDown(0.5);
+            doc.font('Helvetica');
+            if (job.data.singleStageCount > 0) doc.text(`Single Stage: ${job.data.singleStageCount}`);
+            if (job.data.dualStageCount > 0) doc.text(`Dual Stage: ${job.data.dualStageCount}`);
+            if (job.data.threeStageCount > 0) doc.text(`Triple Stage: ${job.data.threeStageCount}`);
+            if (job.data.buckleCount > 0) doc.text(`Buckles: ${job.data.buckleCount}`);
+        }
+
         doc.end();
 
-        // Wait for the file to be fully written before printing
+        // --- Print the generated PDF ---
         stream.on('finish', () => {
             console.log(`PDF created at ${tempFilePath}. Sending to printer.`);
             const options = { printer: PRINTER_NAME };
@@ -107,18 +94,16 @@ ${otherPartsContent.trim()}
             print(tempFilePath, options)
                 .then(jobId => {
                     console.log(`Job sent to printer with ID: ${jobId}`);
-                    // Clean up the temporary PDF file
                     fs.unlink(tempFilePath, () => {});
                 })
                 .catch(err => {
                     console.error("Error from pdf-to-printer:", err);
-                    // Clean up the temporary PDF file
                     fs.unlink(tempFilePath, () => {});
                 });
         });
     });
 
-    res.status(200).send({ message: `${labelsToPrint.length} label(s) being processed for printing.` });
+    res.status(200).send({ message: `${jobsToProcess.length} label(s) being processed for printing.` });
 });
 
 // --- Server Start ---
