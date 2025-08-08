@@ -2,10 +2,7 @@
 
 // --- Dependencies ---
 const express = require('express');
-const { exec } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const os = require('os'); // Added for finding the system temp directory
+const printer = require('printer'); // Use the native printer package
 
 // --- App Initialization ---
 const app = express();
@@ -31,6 +28,7 @@ app.post('/print-label', (req, res) => {
     // --- Label formatting logic (remains the same) ---
     if (data.dropOffType === 'vehicle') {
         const labelContent = `
+
 
 
 
@@ -80,7 +78,6 @@ Module: ${i} of ${totalModules}
         if (dualStage > 0) otherPartsContent += `Dual Stage: ${dualStage}\n`;
         if (threeStage > 0) otherPartsContent += `Triple Stage: ${threeStage}\n`;
         if (buckles > 0) otherPartsContent += `Buckles: ${buckles}\n`;
-
         if (otherPartsContent) {
             labelsToPrint.push(`
 
@@ -102,35 +99,27 @@ ${otherPartsContent.trim()}
         }
     }
 
-    // --- Send Each Label to the Printer (Robust Method) ---
-    labelsToPrint.forEach((label, index) => {
-        // Create the temp file in the system's official temp directory
-        const tempFilePath = path.join(os.tmpdir(), `print_job_${Date.now()}_${index}.txt`);
-
-        fs.writeFile(tempFilePath, label, (writeErr) => {
-            if (writeErr) {
-                console.error(`Error writing temp file:`, writeErr);
-                return;
-            }
-
-            const command = `print /d:"${PRINTER_NAME}" "${tempFilePath}"`;
-            console.log(`Executing final command: ${command}`);
-
-            exec(command, (error, stdout, stderr) => {
-                fs.unlink(tempFilePath, (unlinkErr) => {
-                    if (unlinkErr) console.error(`Error deleting temp file:`, unlinkErr);
-                });
-
-                if (error) {
-                    console.error(`Error during print execution:`, error);
-                    return;
+    // --- Send Each Label to the Printer (Native Method) ---
+    try {
+        labelsToPrint.forEach((label, index) => {
+            console.log(`Sending label ${index + 1} to printer via native module...`);
+            printer.printDirect({
+                data: label, // The raw text to print
+                printer: PRINTER_NAME,
+                type: 'RAW', // Specifies we are sending raw text
+                success: function(jobID) {
+                    console.log(`Sent to printer with job ID: ${jobID}`);
+                },
+                error: function(err) {
+                    console.error('Error from native printer module:', err);
                 }
-                console.log(`Print job sent for label ${index + 1}.`);
             });
         });
-    });
-
-    res.status(200).send({ message: `${labelsToPrint.length} label(s) sent to printer.` });
+        res.status(200).send({ message: `${labelsToPrint.length} label(s) sent to printer.` });
+    } catch (err) {
+        console.error("A critical error occurred with the printer module:", err);
+        res.status(500).send({ error: "Failed to print." });
+    }
 });
 
 // --- Server Start ---
