@@ -3,8 +3,9 @@
 // --- Dependencies ---
 const express = require('express');
 const { exec } = require('child_process');
-const fs = require('fs'); // Required for file operations on Windows
-const path = require('path'); // Required for handling file paths on Windows
+const fs = require('fs');
+const path = require('path');
+const os = require('os'); // Added for finding the system temp directory
 
 // --- App Initialization ---
 const app = express();
@@ -14,29 +15,28 @@ const PORT = 4000;
 app.use(express.json());
 
 // --- Printer Endpoint ---
-/**
- * @route   POST /print-label
- * @desc    Receives data and sends it to a specific Windows printer.
- */
 app.post('/print-label', (req, res) => {
     console.log('Received print request:', req.body);
     const data = req.body;
 
-    // --- Validate Incoming Data ---
     if (!data.shopName || !data.dropOffType) {
         console.error('Invalid data received.');
         return res.status(400).send({ error: 'Invalid data received.' });
     }
 
-    // --- PRINTER CONFIGURATION ---
-    const PRINTER_NAME = 'D450 Printer'; // Your specific Windows printer name
-
-    // --- Format the Label Content ---
+    const PRINTER_NAME = 'D450 Printer';
     const submittedAt = new Date().toLocaleString();
     let labelsToPrint = [];
 
+    // --- Label formatting logic (remains the same) ---
     if (data.dropOffType === 'vehicle') {
         const labelContent = `
+
+
+
+
+
+
 ------------------------------
 SafetyFix -${data.shopName}
 ------------------------------
@@ -52,7 +52,14 @@ Notes: ${data.additionalNotes || 'None'}
         const totalModules = parseInt(data.moduleCount, 10) || 0;
         if (totalModules > 0) {
             for (let i = 1; i <= totalModules; i++) {
-                const labelContent = `
+                labelsToPrint.push(`
+
+
+
+
+
+
+
 ------------------------------
 SafetyFix -${data.shopName}
 ------------------------------
@@ -61,23 +68,28 @@ Phone: ${data.phoneNumber || 'N/A'}
 
 Module: ${i} of ${totalModules}
 ------------------------------
-                `;
-                labelsToPrint.push(labelContent);
+                `);
             }
         }
+        let otherPartsContent = '';
         const singleStage = parseInt(data.singleStageCount, 10) || 0;
         const dualStage = parseInt(data.dualStageCount, 10) || 0;
         const threeStage = parseInt(data.threeStageCount, 10) || 0;
         const buckles = parseInt(data.buckleCount, 10) || 0;
-
-        let otherPartsContent = '';
         if (singleStage > 0) otherPartsContent += `Single Stage: ${singleStage}\n`;
         if (dualStage > 0) otherPartsContent += `Dual Stage: ${dualStage}\n`;
         if (threeStage > 0) otherPartsContent += `Triple Stage: ${threeStage}\n`;
         if (buckles > 0) otherPartsContent += `Buckles: ${buckles}\n`;
 
         if (otherPartsContent) {
-            const otherPartsLabel = `
+            labelsToPrint.push(`
+
+
+
+
+
+
+            
 ------------------------------
 SafetyFix - ${data.shopName}
 ------------------------------
@@ -86,44 +98,37 @@ Phone: ${data.phoneNumber || 'N/A'}
 
 ${otherPartsContent.trim()}
 ------------------------------
-            `;
-            labelsToPrint.push(otherPartsLabel);
+            `);
         }
     }
 
-   // --- Send Each Label to the Printer (DEBUGGING VERSION) ---
-labelsToPrint.forEach((label, index) => {
-    console.log(`\n--- DEBUGGING LABEL ${index + 1} ---`);
+    // --- Send Each Label to the Printer (Robust Method) ---
+    labelsToPrint.forEach((label, index) => {
+        // Create the temp file in the system's official temp directory
+        const tempFilePath = path.join(os.tmpdir(), `print_job_${Date.now()}_${index}.txt`);
 
-    const tempFilePath = path.join(__dirname, `print_job_${Date.now()}_${index}.txt`);
-    console.log(`[DEBUG] Printer Name: "${PRINTER_NAME}"`);
-    console.log(`[DEBUG] Temp File Path: "${tempFilePath}"`);
-
-    fs.writeFile(tempFilePath, label, (writeErr) => {
-        if (writeErr) {
-            console.error('[FATAL] Error writing temp file:', writeErr);
-            return;
-        }
-        console.log('[DEBUG] Successfully wrote temp file.');
-
-        const command = `print /d:"${PRINTER_NAME}" "${tempFilePath}"`;
-        console.log(`[DEBUG] Executing command: ${command}`);
-
-        exec(command, (error, stdout, stderr) => {
-            console.log('\n--- EXECUTION RESULT ---');
-            if (error) {
-                console.error('[RESULT] EXEC ERROR:', error);
-            } else {
-                console.log('[RESULT] Exec completed with no error object.');
+        fs.writeFile(tempFilePath, label, (writeErr) => {
+            if (writeErr) {
+                console.error(`Error writing temp file:`, writeErr);
+                return;
             }
-            console.log('[RESULT] STDOUT (Standard Output):', stdout);
-            console.log('[RESULT] STDERR (Standard Error):', stderr);
-            console.log('--- END OF DEBUGGING BLOCK ---\n');
 
-            // NOTE: We are intentionally NOT deleting the file for debugging.
+            const command = `print /d:"${PRINTER_NAME}" "${tempFilePath}"`;
+            console.log(`Executing final command: ${command}`);
+
+            exec(command, (error, stdout, stderr) => {
+                fs.unlink(tempFilePath, (unlinkErr) => {
+                    if (unlinkErr) console.error(`Error deleting temp file:`, unlinkErr);
+                });
+
+                if (error) {
+                    console.error(`Error during print execution:`, error);
+                    return;
+                }
+                console.log(`Print job sent for label ${index + 1}.`);
+            });
         });
     });
-});
 
     res.status(200).send({ message: `${labelsToPrint.length} label(s) sent to printer.` });
 });
