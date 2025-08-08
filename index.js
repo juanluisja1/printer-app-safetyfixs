@@ -92,38 +92,39 @@ ${otherPartsContent.trim()}
     }
 
     // --- Send Each Label to the Printer (Windows Method) ---
+    // --- Send Each Label to the Printer (Windows Method) ---
     labelsToPrint.forEach((label, index) => {
-        // Create a unique temporary filename
-        const tempFilePath = path.join(__dirname, `print_job_${Date.now()}_${index}.txt`);
+    // Create a unique temporary filename with a .txt extension
+    const tempFilePath = path.join(__dirname, `print_job_${Date.now()}_${index}.txt`);
 
-        // Write the label content to the temporary file
-        fs.writeFile(tempFilePath, label, (writeErr) => {
-            if (writeErr) {
-                console.error(`Error writing temp file for label ${index + 1}:`, writeErr);
+    // Write the label content to the temporary file
+    fs.writeFile(tempFilePath, label, (writeErr) => {
+        if (writeErr) {
+            console.error(`Error writing temp file for label ${index + 1}:`, writeErr);
+            return;
+        }
+
+        // Use the correct Windows 'print' command with the /d: switch
+        const command = `print /d:"${PRINTER_NAME}" "${tempFilePath}"`;
+        console.log(`Executing Windows print command: ${command}`);
+
+        exec(command, (error, stdout, stderr) => {
+            // Always try to delete the temp file afterwards
+            fs.unlink(tempFilePath, (unlinkErr) => {
+                if (unlinkErr) console.error(`Error deleting temp file:`, unlinkErr);
+            });
+
+            if (error) {
+                console.error(`Error printing label ${index + 1}: ${error.message}`);
                 return;
             }
-
-            // Use the Windows 'print' command with the /d: switch
-            const command = `print /d:"${PRINTER_NAME}" "${tempFilePath}"`;
-            console.log(`Executing Windows print command: ${command}`);
-
-            exec(command, (error, stdout, stderr) => {
-                // Always try to delete the temp file afterwards
-                fs.unlink(tempFilePath, (unlinkErr) => {
-                    if (unlinkErr) console.error(`Error deleting temp file:`, unlinkErr);
-                });
-
-                if (error) {
-                    console.error(`Error printing label ${index + 1}: ${error.message}`);
-                    return;
-                }
-                if (stderr) {
-                    console.log(`Printer message for label ${index + 1}: ${stderr}`);
-                }
-                console.log(`Label ${index + 1} sent to Windows printer queue.`);
-            });
+            if (stderr) {
+                console.log(`Printer message for label ${index + 1}: ${stderr}`);
+            }
+            console.log(`Label ${index + 1} sent to Windows printer queue.`);
         });
     });
+});
 
     res.status(200).send({ message: `${labelsToPrint.length} label(s) sent to printer.` });
 });
