@@ -3,12 +3,12 @@
 // --- Dependencies ---
 const express = require('express');
 const { exec } = require('child_process');
-const fs = require('fs'); // Added for file operations
-const path = require('path'); // Added for handling file paths
+const fs = require('fs'); // Required for file operations on Windows
+const path = require('path'); // Required for handling file paths on Windows
 
 // --- App Initialization ---
 const app = express();
-const PORT = 4000; // This can be any port not in use on your local machine
+const PORT = 4000;
 
 // --- Middleware ---
 app.use(express.json());
@@ -29,8 +29,7 @@ app.post('/print-label', (req, res) => {
     }
 
     // --- PRINTER CONFIGURATION ---
-    // The printer name for your Windows machine.
-    const PRINTER_NAME = 'D450 Printer'; // <-- UPDATED PRINTER NAME
+    const PRINTER_NAME = 'D450 Printer'; // Your specific Windows printer name
 
     // --- Format the Label Content ---
     const submittedAt = new Date().toLocaleString();
@@ -45,12 +44,11 @@ Date: ${submittedAt}
 Phone: ${data.phoneNumber || 'N/A'}
 
 Vehicle: ${data.vehicleYear || ''} ${data.vehicleMake || ''} ${data.vehicleModel || ''}
-Notes: ${data.vehicleIssueDescription || 'None'}
+Notes: ${data.additionalNotes || 'None'}
 ------------------------------
         `;
         labelsToPrint.push(labelContent);
     } else if (data.dropOffType === 'part') {
-        // Handle Modules first
         const totalModules = parseInt(data.moduleCount, 10) || 0;
         if (totalModules > 0) {
             for (let i = 1; i <= totalModules; i++) {
@@ -67,8 +65,6 @@ Module: ${i} of ${totalModules}
                 labelsToPrint.push(labelContent);
             }
         }
-
-        // Handle other parts (single stage, dual stage, etc.)
         const singleStage = parseInt(data.singleStageCount, 10) || 0;
         const dualStage = parseInt(data.dualStageCount, 10) || 0;
         const threeStage = parseInt(data.threeStageCount, 10) || 0;
@@ -80,7 +76,6 @@ Module: ${i} of ${totalModules}
         if (threeStage > 0) otherPartsContent += `Triple Stage: ${threeStage}\n`;
         if (buckles > 0) otherPartsContent += `Buckles: ${buckles}\n`;
 
-        // If there are any other parts, create a separate label for them
         if (otherPartsContent) {
             const otherPartsLabel = `
 ------------------------------
@@ -98,25 +93,24 @@ ${otherPartsContent.trim()}
 
     // --- Send Each Label to the Printer (Windows Method) ---
     labelsToPrint.forEach((label, index) => {
-        // For Windows, we must write the content to a temporary file first.
+        // Create a unique temporary filename
         const tempFilePath = path.join(__dirname, `print_job_${Date.now()}_${index}.txt`);
 
+        // Write the label content to the temporary file
         fs.writeFile(tempFilePath, label, (writeErr) => {
             if (writeErr) {
                 console.error(`Error writing temp file for label ${index + 1}:`, writeErr);
                 return;
             }
 
-            // Use the Windows 'print' command. Note the /d: switch.
+            // Use the Windows 'print' command with the /d: switch
             const command = `print /d:"${PRINTER_NAME}" "${tempFilePath}"`;
-            console.log(`Executing print command for label ${index + 1}: ${command}`);
+            console.log(`Executing Windows print command: ${command}`);
 
             exec(command, (error, stdout, stderr) => {
-                // Always try to delete the temp file, regardless of print success.
+                // Always try to delete the temp file afterwards
                 fs.unlink(tempFilePath, (unlinkErr) => {
-                    if (unlinkErr) {
-                        console.error(`Error deleting temp file ${tempFilePath}:`, unlinkErr);
-                    }
+                    if (unlinkErr) console.error(`Error deleting temp file:`, unlinkErr);
                 });
 
                 if (error) {
@@ -124,10 +118,9 @@ ${otherPartsContent.trim()}
                     return;
                 }
                 if (stderr) {
-                    // stderr on the 'print' command can sometimes contain success messages.
                     console.log(`Printer message for label ${index + 1}: ${stderr}`);
                 }
-                console.log(`Label ${index + 1} sent to printer.`);
+                console.log(`Label ${index + 1} sent to Windows printer queue.`);
             });
         });
     });
@@ -139,12 +132,3 @@ ${otherPartsContent.trim()}
 app.listen(PORT, () => {
     console.log(`Local printer app listening on http://localhost:${PORT}`);
 });
-
-/*
-// Note for Windows:
-// To find printer names, open Command Prompt and run:
-wmic printer get name
-
-// Or in PowerShell, run:
-Get-Printer
-*/
