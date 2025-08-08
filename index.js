@@ -58,10 +58,10 @@ app.post('/print-label', (req, res) => {
         doc.pipe(stream);
 
         // --- Build the PDF with bolding ---
-        doc.font('Helvetica-Bold').fontSize(12).text(`SafetyFix - ${job.data.shopName}`, { align: 'center' });
+        doc.font('Helvetica-Bold').fontSize(20).text(`SafetyFix - ${job.data.shopName}`, { align: 'center' });
         doc.moveDown(2);
 
-        doc.fontSize(10);
+        doc.fontSize(16);
         doc.font('Helvetica-Bold').text('Date: ', { continued: true }).font('Helvetica').text(submittedAt);
         doc.font('Helvetica-Bold').text('Phone: ', { continued: true }).font('Helvetica').text(job.data.phoneNumber || 'N/A');
         doc.moveDown();
