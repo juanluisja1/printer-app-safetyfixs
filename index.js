@@ -58,26 +58,27 @@ app.post('/print-label', (req, res) => {
         doc.pipe(stream);
 
         // --- Build the PDF with bolding ---
-        doc.font('Helvetica-Bold').fontSize(20).text(`SafetyFix - ${job.data.shopName}`, { align: 'center' });
-        doc.moveDown(2);
-
+        doc.font('Helvetica-Bold').fontSize(26).text(`${job.data.shopName}`, { align: 'center' });
+        doc.moveDown(1);
+        doc.font('Helvetica-Bold').text('Phone: ', { continued: true }).font('Helvetica-Bold').text(job.data.phoneNumber || 'N/A');
+        doc.moveDown(1);
         doc.fontSize(16);
-        doc.font('Helvetica-Bold').text('Date: ', { continued: true }).font('Helvetica').text(submittedAt);
-        doc.font('Helvetica-Bold').text('Phone: ', { continued: true }).font('Helvetica').text(job.data.phoneNumber || 'N/A');
+        doc.font('Helvetica-Bold').text('Date: ', { continued: true }).font('Helvetica-Bold').text(submittedAt);
+        doc.fontSize(26);
         doc.moveDown();
-
+	doc.fontSize(20);
         if (job.type === 'vehicle') {
             doc.font('Helvetica-Bold').text('Vehicle: ', { continued: true })
-               .font('Helvetica').text(`${job.data.vehicleYear || ''} ${job.data.vehicleMake || ''} ${job.data.vehicleModel || ''}`);
+               .font('Helvetica-Bold').text(`${job.data.vehicleYear || ''} ${job.data.vehicleMake || ''} ${job.data.vehicleModel || ''}`);
             doc.font('Helvetica-Bold').text('Notes: ', { continued: true })
-               .font('Helvetica').text(job.data.additionalNotes || 'None');
+               .font('Helvetica-Bold').text(job.data.additionalNotes || 'None');
         } else if (job.type === 'module') {
             doc.font('Helvetica-Bold').text('Module: ', { continued: true })
-               .font('Helvetica').text(`${job.current} of ${job.total}`);
+               .font('Helvetica-Bold').text(`${job.current} of ${job.total}`);
         } else if (job.type === 'other_parts') {
             doc.font('Helvetica-Bold').text('Parts Drop-off:', { underline: true });
             doc.moveDown(0.5);
-            doc.font('Helvetica');
+            doc.font('Helvetica-Bold');
             if (job.data.singleStageCount > 0) doc.text(`Single Stage: ${job.data.singleStageCount}`);
             if (job.data.dualStageCount > 0) doc.text(`Dual Stage: ${job.data.dualStageCount}`);
             if (job.data.threeStageCount > 0) doc.text(`Triple Stage: ${job.data.threeStageCount}`);
